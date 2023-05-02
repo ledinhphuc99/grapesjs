@@ -1,5 +1,5 @@
 /**
- * With this module is possible to manage components inside the canvas. You can customize the initial state of the module from the editor initialization, by passing the following [Configuration Object](https://github.com/artf/grapesjs/blob/master/src/dom_components/config/config.ts)
+ * With this module is possible to manage components inside the canvas. You can customize the initial state of the module from the editor initialization, by passing the following [Configuration Object](https://github.com/GrapesJS/grapesjs/blob/master/src/dom_components/config/config.ts)
  * ```js
  * const editor = grapesjs.init({
  *  domComponents: {
@@ -53,10 +53,10 @@
  * @module Components
  */
 import { isEmpty, isObject, isArray, isFunction, isString, result, debounce } from 'underscore';
-import defaults from './config/config';
-import Component, { keyUpdate, keyUpdateInside } from './model/Component';
+import defaults, { DomComponentsConfig } from './config/config';
+import Component, { IComponent, keyUpdate, keyUpdateInside } from './model/Component';
 import Components from './model/Components';
-import ComponentView from './view/ComponentView';
+import ComponentView, { IComponentView } from './view/ComponentView';
 import ComponentWrapperView from './view/ComponentWrapperView';
 import ComponentsView from './view/ComponentsView';
 import ComponentTableCell from './model/ComponentTableCell';
@@ -97,7 +97,7 @@ import ComponentFrame from './model/ComponentFrame';
 import ComponentFrameView from './view/ComponentFrameView';
 import { ItemManagerModule } from '../abstract/Module';
 import EditorModel from '../editor/model/Editor';
-import { ComponentAdd } from './model/types';
+import { ComponentAdd, ComponentDefinitionDefined } from './model/types';
 
 export type ComponentEvent =
   | 'component:create'
@@ -117,7 +117,26 @@ export type ComponentEvent =
   | 'component:drag'
   | 'component:drag:end';
 
-export default class ComponentManager extends ItemManagerModule {
+export interface ComponentModelDefinition extends IComponent {
+  defaults?: ComponentDefinitionDefined;
+  [key: string]: any;
+}
+
+export interface ComponentViewDefinition extends IComponentView {
+  [key: string]: any;
+}
+
+export interface AddComponentTypeOptions {
+  isComponent?: (el: HTMLElement) => boolean | ComponentDefinitionDefined | undefined;
+  model?: Partial<ComponentModelDefinition> & ThisType<ComponentModelDefinition & Component>;
+  view?: Partial<ComponentViewDefinition> & ThisType<ComponentViewDefinition & ComponentView>;
+  extend?: string;
+  extendView?: string;
+  extendFn?: string[];
+  extendFnView?: string[];
+}
+
+export default class ComponentManager extends ItemManagerModule<DomComponentsConfig, any> {
   componentTypes = [
     {
       id: 'cell',
@@ -251,6 +270,7 @@ export default class ComponentManager extends ItemManagerModule {
     super(em, 'DomComponents', new Components(undefined, { em }));
 
     if (em) {
+      //@ts-ignore
       this.config.components = em.config.components || this.config.components;
     }
 
@@ -264,8 +284,6 @@ export default class ComponentManager extends ItemManagerModule {
 
     // Load dependencies
     if (em) {
-      this.config.modal = em.Modal || '';
-      this.config.am = em.Assets || '';
       em.get('Parser').compTypes = this.componentTypes;
       em.on('change:componentHovered', this.componentHovered, this);
 
@@ -434,12 +452,12 @@ export default class ComponentManager extends ItemManagerModule {
    * @param {Object} methods Component methods
    * @return {this}
    */
-  addType(type: string, methods: any) {
+  addType(type: string, methods: AddComponentTypeOptions) {
     const { em } = this;
     const { model = {}, view = {}, isComponent, extend, extendView, extendFn = [], extendFnView = [] } = methods;
     const compType = this.getType(type);
-    const extendType = this.getType(extend);
-    const extendViewType = this.getType(extendView);
+    const extendType = this.getType(extend!);
+    const extendViewType = this.getType(extendView!);
     const typeToExtend = extendType ? extendType : compType ? compType : this.getType('default');
     const modelToExt = typeToExtend.model;
     const viewToExt = extendViewType ? extendViewType.view : typeToExtend.view;
@@ -461,6 +479,7 @@ export default class ComponentManager extends ItemManagerModule {
     // If the model/view is a simple object I need to extend it
     if (typeof model === 'object') {
       const defaults = result(model, 'defaults');
+      // @ts-ignore
       delete model.defaults;
       methods.model = modelToExt.extend(
         {
@@ -471,6 +490,7 @@ export default class ComponentManager extends ItemManagerModule {
           isComponent: compType && !extendType && !isComponent ? modelToExt.isComponent : isComponent || (() => 0),
         }
       );
+      // @ts-ignore
       Object.defineProperty(methods.model.prototype, 'defaults', {
         value: {
           ...(result(modelToExt.prototype, 'defaults') || {}),
@@ -490,8 +510,9 @@ export default class ComponentManager extends ItemManagerModule {
       compType.model = methods.model;
       compType.view = methods.view;
     } else {
+      // @ts-ignore
       methods.id = type;
-      this.componentTypes.unshift(methods);
+      this.componentTypes.unshift(methods as any);
     }
 
     const event = `component:type:${compType ? 'update' : 'add'}`;
